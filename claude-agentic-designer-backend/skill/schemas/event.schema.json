@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AgentEvent",
+  "type": "object",
+  "required": ["run_id", "type", "seq", "ts"],
+  "properties": {
+    "run_id": { "type": "string" },
+    "seq": { "type": "integer" },
+    "ts": { "type": "number", "description": "Unix epoch seconds." },
+    "type": {
+      "type": "string",
+      "enum": [
+        "run_start", "run_end", "agent_start", "agent_thinking", "agent_end",
+        "tool_call", "tool_result", "log", "artifact", "evaluation", "iteration"
+      ]
+    },
+    "agent": {
+      "type": ["string", "null"],
+      "enum": [
+        "orchestrator", "design_system", "content", "structure", "layout",
+        "builder", "reflection", "evaluator", null
+      ]
+    },
+    "level": { "type": "string", "enum": ["debug", "info", "warn", "error"] },
+    "message": { "type": "string" },
+    "data": { "type": "object" }
+  }
+}

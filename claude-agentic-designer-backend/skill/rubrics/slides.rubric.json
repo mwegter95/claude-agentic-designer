@@ -1,0 +1,63 @@
+{
+  "name": "slides.rubric.v1",
+  "doc_type": "slides",
+  "pass_threshold": 0.8,
+  "criteria": [
+    {
+      "id": "fonts_on_brand",
+      "tier": "deterministic",
+      "weight": 1.5,
+      "pass_threshold": 5,
+      "description": "All text uses only the master's approved typefaces."
+    },
+    {
+      "id": "colors_on_brand",
+      "tier": "deterministic",
+      "weight": 1.5,
+      "pass_threshold": 5,
+      "description": "All colors come from the theme palette (no off-brand hex)."
+    },
+    {
+      "id": "layouts_from_master",
+      "tier": "deterministic",
+      "weight": 1.5,
+      "pass_threshold": 5,
+      "description": "Every slide uses a named layout from the master library."
+    },
+    {
+      "id": "bullet_density",
+      "tier": "deterministic",
+      "weight": 1.0,
+      "pass_threshold": 5,
+      "description": "No slide exceeds the master's max bullets-per-slide rule."
+    },
+    {
+      "id": "visual_hierarchy",
+      "tier": "llm",
+      "weight": 1.5,
+      "pass_threshold": 4,
+      "description": "Clear focal point and title dominance; aligned to examples."
+    },
+    {
+      "id": "narrative_coherence",
+      "tier": "llm",
+      "weight": 1.25,
+      "pass_threshold": 4,
+      "description": "One idea per slide; logical arc from open to close."
+    },
+    {
+      "id": "whitespace_balance",
+      "tier": "llm",
+      "weight": 1.0,
+      "pass_threshold": 3,
+      "description": "Comfortable density and consistent margins/alignment."
+    },
+    {
+      "id": "audience_fit",
+      "tier": "llm",
+      "weight": 1.0,
+      "pass_threshold": 4,
+      "description": "Tone, depth, and terminology match the intended audience."
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SlidePlan",
+  "type": "object",
+  "required": ["doc_type", "slides"],
+  "properties": {
+    "doc_type": {
+      "type": "string",
+      "enum": ["one_pager", "white_paper", "slides"]
+    },
+    "title": { "type": "string" },
+    "master": {
+      "type": "string",
+      "description": "Absolute path to the master .pptx whose layouts are reused."
+    },
+    "slides": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["layout", "placeholders"],
+        "properties": {
+          "layout": {
+            "description": "Master layout index (int) or layout name (string).",
+            "oneOf": [{ "type": "integer" }, { "type": "string" }]
+          },
+          "placeholders": {
+            "type": "object",
+            "description": "Map of placeholder idx (as string) -> text.",
+            "additionalProperties": { "type": "string" }
+          },
+          "bullets": {
+            "type": "object",
+            "description": "Map of placeholder idx (as string) -> list of bullet lines.",
+            "additionalProperties": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          },
+          "notes": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# Runtime data
+workspace/
+*.log
+
+# OS
+.DS_Store

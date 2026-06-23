@@ -1,0 +1,56 @@
+{
+  "name": "one_pager.rubric.v1",
+  "doc_type": "one_pager",
+  "pass_threshold": 0.82,
+  "criteria": [
+    {
+      "id": "fonts_on_brand",
+      "tier": "deterministic",
+      "weight": 1.5,
+      "pass_threshold": 5,
+      "description": "All text uses only the master's approved typefaces."
+    },
+    {
+      "id": "colors_on_brand",
+      "tier": "deterministic",
+      "weight": 1.5,
+      "pass_threshold": 5,
+      "description": "All colors come from the theme palette (no off-brand hex)."
+    },
+    {
+      "id": "layouts_from_master",
+      "tier": "deterministic",
+      "weight": 1.25,
+      "pass_threshold": 5,
+      "description": "Uses an approved one-pager / hero master layout."
+    },
+    {
+      "id": "bullet_density",
+      "tier": "deterministic",
+      "weight": 1.25,
+      "pass_threshold": 5,
+      "description": "Scannable; does not exceed density limits for a one-pager."
+    },
+    {
+      "id": "scannability",
+      "tier": "llm",
+      "weight": 1.5,
+      "pass_threshold": 4,
+      "description": "Key message and 3-5 proof points graspable in under 15s."
+    },
+    {
+      "id": "single_cta",
+      "tier": "llm",
+      "weight": 1.0,
+      "pass_threshold": 4,
+      "description": "Exactly one clear call-to-action / next step."
+    },
+    {
+      "id": "visual_hierarchy",
+      "tier": "llm",
+      "weight": 1.25,
+      "pass_threshold": 4,
+      "description": "Hero/headline dominates; supporting blocks subordinate."
+    }
+  ]
+}

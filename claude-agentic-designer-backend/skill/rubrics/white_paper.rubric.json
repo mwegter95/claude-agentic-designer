@@ -1,0 +1,56 @@
+{
+  "name": "white_paper.rubric.v1",
+  "doc_type": "white_paper",
+  "pass_threshold": 0.8,
+  "criteria": [
+    {
+      "id": "fonts_on_brand",
+      "tier": "deterministic",
+      "weight": 1.25,
+      "pass_threshold": 5,
+      "description": "All text uses only the master's approved typefaces."
+    },
+    {
+      "id": "colors_on_brand",
+      "tier": "deterministic",
+      "weight": 1.25,
+      "pass_threshold": 5,
+      "description": "All colors come from the theme palette (no off-brand hex)."
+    },
+    {
+      "id": "layouts_from_master",
+      "tier": "deterministic",
+      "weight": 1.0,
+      "pass_threshold": 5,
+      "description": "Cover, section, and body pages use approved master layouts."
+    },
+    {
+      "id": "structure_completeness",
+      "tier": "llm",
+      "weight": 1.5,
+      "pass_threshold": 4,
+      "description": "Has cover, exec summary, TOC, sections, conclusion, references."
+    },
+    {
+      "id": "argument_quality",
+      "tier": "llm",
+      "weight": 1.5,
+      "pass_threshold": 4,
+      "description": "Problem-approach-evidence-conclusion flow is rigorous and clear."
+    },
+    {
+      "id": "citation_support",
+      "tier": "llm",
+      "weight": 1.0,
+      "pass_threshold": 3,
+      "description": "Claims are supported or explicitly flagged as needing a source."
+    },
+    {
+      "id": "readability",
+      "tier": "llm",
+      "weight": 1.0,
+      "pass_threshold": 4,
+      "description": "Prose is clear, consistent, and appropriately formal."
+    }
+  ]
+}
