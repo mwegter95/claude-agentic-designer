@@ -6,6 +6,8 @@ Set-Location $here
 $venvPy = Join-Path $here ".venv\Scripts\python.exe"
 if (Test-Path $venvPy) {
     $py = $venvPy
+} elseif (Get-Command py -ErrorAction SilentlyContinue) {
+    $py = "py"
 } else {
     $py = "python"
 }

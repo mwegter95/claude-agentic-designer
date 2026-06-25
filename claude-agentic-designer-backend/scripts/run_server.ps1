@@ -20,7 +20,11 @@ $port = if ($env:CLAUDE_DESIGNER_PORT) { $env:CLAUDE_DESIGNER_PORT } else { "878
 
 if (-not (Test-Path ".venv")) {
   Write-Host "Creating virtual environment..."
-  python -m venv .venv
+  if (Get-Command py -ErrorAction SilentlyContinue) {
+    py -3 -m venv .venv
+  } else {
+    python -m venv .venv
+  }
 }
 & .\.venv\Scripts\python.exe -m pip install -q --disable-pip-version-check -r requirements.txt
 

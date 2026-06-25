@@ -6,14 +6,16 @@ Set-Location (Join-Path $PSScriptRoot "..")
 
 Write-Host "== Claude Agentic Designer - backend install =="
 
-$python = Get-Command python -ErrorAction SilentlyContinue
-if (-not $python) { $python = Get-Command py -ErrorAction SilentlyContinue }
-if (-not $python) {
+# Prefer the Windows Python launcher (py -3); fall back to python on PATH.
+if (Get-Command py -ErrorAction SilentlyContinue) {
+  py -3 -m venv .venv
+} elseif (Get-Command python -ErrorAction SilentlyContinue) {
+  python -m venv .venv
+} else {
   Write-Error "Python 3 is required. Install from https://www.python.org (check 'Add python.exe to PATH') or 'winget install Python.Python.3.12'."
   exit 1
 }
 
-& $python.Source -m venv .venv
 & .\.venv\Scripts\python.exe -m pip install --upgrade pip
 & .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 
