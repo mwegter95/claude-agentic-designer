@@ -159,6 +159,39 @@ def aggregate(findings: List[Dict], rubric: Dict) -> Dict:
     }
 
 
+def run_evaluation(rubric, plan, tokens, pptx_path, llm_scores=None, run_id=""):
+    """Reusable evaluation entry point shared by the CLI and the MCP server.
+
+    Returns a report dict: {rubric, facts, findings, summary}.
+    """
+    facts = _collect_pptx_facts(Path(pptx_path).expanduser().resolve())
+
+    if run_id:
+        emit(run_id, "tool_call", agent="evaluator", message="evaluate",
+             data={"rubric": rubric.get("name")})
+
+    findings = run_deterministic(rubric, plan, tokens, facts)
+    findings = merge_llm(findings, llm_scores, rubric)
+    summary = aggregate(findings, rubric)
+
+    report = {
+        "rubric": rubric.get("name"),
+        "facts": facts,
+        "findings": findings,
+        "summary": summary,
+    }
+
+    if run_id:
+        emit(run_id, "evaluation", agent="evaluator",
+             level="info" if summary["passed"] else "warn",
+             message=f"Score {summary['weighted_score']:.2f} / "
+                     f"threshold {summary['threshold']} — "
+                     f"{'PASS' if summary['passed'] else 'REVISE'}",
+             data=summary)
+
+    return report
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="Run rubric evaluation")
     p.add_argument("--rubric", required=True)
@@ -173,34 +206,15 @@ def main() -> int:
     rubric = json.loads(Path(args.rubric).read_text(encoding="utf-8"))
     plan = json.loads(Path(args.plan).read_text(encoding="utf-8"))
     tokens = json.loads(Path(args.tokens).read_text(encoding="utf-8"))
-    facts = _collect_pptx_facts(Path(args.pptx).expanduser().resolve())
 
-    if args.run:
-        emit(args.run, "tool_call", agent="evaluator", message="evaluate",
-             data={"rubric": rubric.get("name")})
-
-    findings = run_deterministic(rubric, plan, tokens, facts)
     llm_scores = None
     if args.llm_scores and Path(args.llm_scores).exists():
         llm_scores = json.loads(Path(args.llm_scores).read_text(encoding="utf-8"))
-    findings = merge_llm(findings, llm_scores, rubric)
-    summary = aggregate(findings, rubric)
 
-    report = {
-        "rubric": rubric.get("name"),
-        "facts": facts,
-        "findings": findings,
-        "summary": summary,
-    }
+    report = run_evaluation(rubric, plan, tokens, args.pptx,
+                            llm_scores=llm_scores, run_id=args.run)
+    summary = report["summary"]
     Path(args.out).write_text(json.dumps(report, indent=2), encoding="utf-8")
-
-    if args.run:
-        emit(args.run, "evaluation", agent="evaluator",
-             level="info" if summary["passed"] else "warn",
-             message=f"Score {summary['weighted_score']:.2f} / "
-                     f"threshold {summary['threshold']} — "
-                     f"{'PASS' if summary['passed'] else 'REVISE'}",
-             data=summary)
 
     print(json.dumps({"ok": True, **summary}))
     return 0

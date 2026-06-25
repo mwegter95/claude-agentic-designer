@@ -1,0 +1,31 @@
+{
+  "//": "Copy the relevant block into your Claude Desktop config and edit the absolute paths.",
+  "//config_locations": {
+    "windows": "%APPDATA%\\Claude\\claude_desktop_config.json",
+    "macos": "~/Library/Application Support/Claude/claude_desktop_config.json"
+  },
+  "mcpServers": {
+    "claude-agentic-designer": {
+      "//windows_example": "Use the venv python.exe and an absolute path to mcp_server.py.",
+      "command": "C:\\path\\to\\claude-agentic-designer-backend\\.venv\\Scripts\\python.exe",
+      "args": [
+        "C:\\path\\to\\claude-agentic-designer-backend\\mcp_server.py"
+      ],
+      "env": {
+        "CLAUDE_DESIGNER_WORKSPACE": "C:\\path\\to\\claude-agentic-designer-backend\\workspace",
+        "CLAUDE_DESIGNER_EVENT_URL": "http://127.0.0.1:8787/api/ingest"
+      }
+    },
+    "claude-agentic-designer-macos": {
+      "//macos_example": "Use the venv python and an absolute path to mcp_server.py.",
+      "command": "/absolute/path/to/claude-agentic-designer-backend/.venv/bin/python",
+      "args": [
+        "/absolute/path/to/claude-agentic-designer-backend/mcp_server.py"
+      ],
+      "env": {
+        "CLAUDE_DESIGNER_WORKSPACE": "/absolute/path/to/claude-agentic-designer-backend/workspace",
+        "CLAUDE_DESIGNER_EVENT_URL": "http://127.0.0.1:8787/api/ingest"
+      }
+    }
+  }
+}

@@ -97,6 +97,63 @@ The skill scripts always write `workspace/runs/<run_id>/events.jsonl` and *also*
 best-effort POST to `CLAUDE_DESIGNER_EVENT_URL`. The server ingests whichever path
 works, so the UI stays live even if the skill's sandbox can't reach localhost.
 
+## Using it as a local MCP server (Claude Desktop)
+
+This is the recommended route when you want to drive everything from the **Claude
+Desktop app** while keeping all the local benefits — real `.pptx` files, your
+reference library, and the companion UI lighting up each agent.
+
+Unlike the cloud Skill (which runs in Claude's sandbox and can't reach your files
+or local server), the MCP server runs **on your PC**. Claude Desktop launches it
+over stdio and calls its tools; those tools reuse the exact same Python functions
+and emit the exact same events, so nothing about the UI changes.
+
+```
+Claude Desktop ──stdio──▶ mcp_server.py ──emit()──▶ workspace/runs/<id>/events.jsonl
+                                │                              │
+                                └──── HTTP POST ────▶ FastAPI server ──SSE──▶ React UI
+```
+
+Everything runs on the same machine:
+
+1. Install deps (includes the `mcp` SDK) and start the companion stack as usual:
+
+   ```bash
+   # macOS / Linux
+   ./scripts/install.sh
+   ./scripts/run_server.sh        # FastAPI server on :8787
+   ```
+   ```powershell
+   # Windows (PowerShell)
+   ./scripts/install.ps1
+   ./scripts/run_server.ps1
+   ```
+   Then start the frontend (`../` React app) so the UI is open.
+
+2. Point Claude Desktop at the MCP server. Copy the matching block from
+   `claude_desktop_config.example.json` into your Claude Desktop config, fixing the
+   absolute paths:
+   - **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+   - **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+
+   The `command` must be the venv's Python and `args` the absolute path to
+   `mcp_server.py`. Restart Claude Desktop so it picks up the server.
+
+3. In Claude Desktop, run the `design_artifact` prompt (or just chat). Claude calls
+   the MCP tools — `start_run`, `list_reference_files`, `extract_design_tokens`,
+   `build_presentation`, `render_presentation`, `evaluate_presentation`,
+   `log_event`, `finish_run` — and the companion UI lights up each agent in real
+   time. The finished `.pptx` lands in `workspace/runs/<run_id>/`.
+
+To inspect the MCP server standalone (without Claude Desktop):
+
+```bash
+./scripts/run_mcp.sh      # uses the MCP Inspector if `mcp` CLI is present
+```
+```powershell
+./scripts/run_mcp.ps1
+```
+
 ## Microsoft 365 / SharePoint
 
 Optional. Register a **public client** app in Entra ID with delegated
