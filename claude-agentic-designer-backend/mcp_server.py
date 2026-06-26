@@ -34,7 +34,7 @@ from mcp.server.fastmcp import FastMCP  # noqa: E402
 
 from tools.build_pptx import build  # noqa: E402
 from tools.extract_tokens import extract  # noqa: E402
-from tools.render_pptx import render, find_soffice  # noqa: E402
+from tools.render_pptx import render, available_renderer  # noqa: E402
 from tools.evaluate import run_evaluation  # noqa: E402
 from tools.list_references import load as load_refs, resolve as resolve_ref  # noqa: E402
 from tools.common.events import emit, AGENTS, EVENT_TYPES  # noqa: E402
@@ -231,10 +231,12 @@ def render_presentation(run_id: str) -> dict:
     pptx = next(run_dir(run_id).glob("*.pptx"), None)
     if pptx is None:
         return {"ok": False, "error": "No .pptx found for this run. Build it first."}
-    if not find_soffice():
+    if not available_renderer():
         emit(run_id, "log", agent="reflection", level="warn",
-             message="LibreOffice not found; skipping preview render.")
-        return {"ok": False, "error": "LibreOffice 'soffice' not found.",
+             message="No renderer (PowerPoint or LibreOffice) found; skipping preview render.")
+        return {"ok": False,
+                "error": "No renderer available. Install Microsoft PowerPoint "
+                         "(Windows, used via COM) or LibreOffice.",
                 "renders": [], "out": str(run_renders_dir(run_id))}
     emit(run_id, "tool_call", agent="reflection", message="render_pptx",
          data={"pptx": pptx.name})

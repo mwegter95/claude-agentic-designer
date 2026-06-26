@@ -8,3 +8,4 @@ msal>=1.28
 requests>=2.31
 watchfiles>=0.21
 mcp>=1.2
+pywin32>=306; sys_platform == "win32"

@@ -167,12 +167,20 @@ references. Without it, use local file uploads.
 - **Python 3.10+** — macOS: `brew install python` · Windows: install from
   [python.org](https://www.python.org/downloads/) and check *“Add python.exe to PATH”*
   (or `winget install Python.Python.3.12`).
-- **LibreOffice** (`soffice`) for slide rendering:
-  - macOS: `brew install --cask libreoffice`
-  - Windows: `winget install TheDocumentFoundation.LibreOffice` (or download from
-    libreoffice.org). The scripts auto-detect
-    `C:\Program Files\LibreOffice\program\soffice.exe`; otherwise set `SOFFICE_BIN`.
-- **poppler** (`pdftoppm`) recommended for crisp per-slide PNGs:
+- **A slide renderer** (for the preview thumbnails the Reflection/Evaluator agents
+  use). The renderer is auto-detected in this order:
+  1. **Microsoft PowerPoint** — *recommended on Windows.* If Office is already
+     installed, no extra setup is needed; the backend drives PowerPoint via COM
+     automation (`pywin32`, installed automatically on Windows). Highest fidelity.
+  2. **LibreOffice** (`soffice`) — cross-platform fallback:
+     - macOS: `brew install --cask libreoffice`
+     - Windows: `winget install TheDocumentFoundation.LibreOffice`. Auto-detected at
+       `C:\Program Files\LibreOffice\program\soffice.exe`; otherwise set `SOFFICE_BIN`.
+
+  If neither is present, the `.pptx` is still generated and downloadable — only the
+  preview images are skipped.
+- **poppler** (`pdftoppm`) recommended for crisp per-slide PNGs **when using the
+  LibreOffice path** (not needed for PowerPoint):
   - macOS: `brew install poppler`
   - Windows: `winget install oschwartz10612.Poppler` (or download a poppler build and
     add its `bin` folder to PATH). Optional — without it the renderer falls back to a
