@@ -17,6 +17,14 @@ fi
 
 rm -f "$OUT"
 
+# Build the companion UI and vendor it into ./webui so the FastAPI server can
+# serve it same-origin (no Node/Vite needed at runtime).
+ROOT="$(cd "$HERE/.." && pwd)"
+echo "Building companion UI (npm run build)..."
+( cd "$ROOT" && npm run build )
+rm -rf "$HERE/webui"
+cp -R "$ROOT/dist" "$HERE/webui"
+
 # Drop compiled-bytecode dirs so they don't end up in the bundle.
 find . -type d -name '__pycache__' -prune -exec rm -rf {} + 2>/dev/null || true
 

@@ -402,12 +402,33 @@ def _venv_python() -> str:
     return str(candidate) if candidate.exists() else sys.executable
 
 
-def _spawn_detached(args, cwd: Path, log_path: Path, shell: bool = False):
+def _child_env() -> dict:
+    """Environment for spawned children so they can import vendored deps + tools."""
+    env = dict(os.environ)
+    parts = [str(REPO_ROOT)]
+    if _BUNDLED_LIB.is_dir():
+        parts.append(str(_BUNDLED_LIB))
+    if env.get("PYTHONPATH"):
+        parts.append(env["PYTHONPATH"])
+    env["PYTHONPATH"] = os.pathsep.join(parts)
+    return env
+
+
+def _has_built_ui() -> bool:
+    """True if a prebuilt companion UI is present (served by the companion server)."""
+    return (REPO_ROOT / "webui" / "index.html").is_file() \
+        or (REPO_ROOT.parent / "dist" / "index.html").is_file()
+
+
+def _spawn_detached(args, cwd: Path, log_path: Path, shell: bool = False,
+                    env: Optional[dict] = None):
     import subprocess
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log = open(log_path, "ab", buffering=0)  # noqa: SIM115 (kept open for child)
     kwargs: dict[str, Any] = dict(cwd=str(cwd), stdin=subprocess.DEVNULL,
                                   stdout=log, stderr=log, shell=shell)
+    if env is not None:
+        kwargs["env"] = env
     if os.name == "nt":
         # DETACHED_PROCESS: no console window, survives independently.
         kwargs["creationflags"] = 0x00000008
@@ -417,13 +438,17 @@ def _spawn_detached(args, cwd: Path, log_path: Path, shell: bool = False):
 
 
 def _autostart_companion_ui() -> None:
-    """Best-effort: start the companion event server (FastAPI) and the React UI.
+    """Best-effort: start the companion event server (FastAPI) and open the UI.
 
     Triggered when Claude Desktop launches this MCP server (or the remote runner)
     so the user does not have to start the UI by hand. Controlled by
     CLAUDE_DESIGNER_AUTOSTART_UI (default on). Never writes to stdout (the stdio
     MCP stream lives there) and never raises — UI is a convenience, not a
     dependency.
+
+    The companion server serves a prebuilt UI (./webui) same-origin, so the
+    packaged extension needs no Node/Vite at runtime. In local dev (no built UI
+    but a Vite project one level up) it falls back to `npm run dev`.
     """
     if not _truthy(os.environ.get("CLAUDE_DESIGNER_AUTOSTART_UI", "1")):
         return
@@ -432,21 +457,30 @@ def _autostart_companion_ui() -> None:
     server_port = int(os.environ.get("CLAUDE_DESIGNER_PORT", "8787"))
     ui_port = int(os.environ.get("CLAUDE_DESIGNER_UI_PORT", "5273"))
     logs_dir = REPO_ROOT / "workspace" / "logs"
-    frontend_dir = REPO_ROOT.parent  # the Vite project lives one level up
+    frontend_dir = REPO_ROOT.parent  # the Vite project lives one level up (dev only)
 
     try:
         if not _port_open(host, server_port):
             _spawn_detached(
-                [_venv_python(), "-m", "uvicorn", "server.app:app",
+                [sys.executable, "-m", "uvicorn", "server.app:app",
                  "--host", host, "--port", str(server_port)],
                 cwd=REPO_ROOT,
                 log_path=logs_dir / "companion-server.log",
+                env=_child_env(),
             )
             print(f"[mcp] launched companion server on http://{host}:{server_port}",
                   file=sys.stderr)
     except Exception as exc:  # noqa: BLE001
         print(f"[mcp] companion server autostart skipped: {exc}", file=sys.stderr)
 
+    # Packaged route: the companion server serves the built UI same-origin.
+    if _has_built_ui():
+        print(f"[mcp] companion UI served at http://{host}:{server_port}",
+              file=sys.stderr)
+        _open_browser_when_ready(f"http://{host}:{server_port}", host, server_port)
+        return
+
+    # Dev route: no built UI, but a Vite project with deps installed is available.
     try:
         if _truthy(os.environ.get("CLAUDE_DESIGNER_AUTOSTART_FRONTEND", "1")) \
                 and not _port_open(host, ui_port):
@@ -462,10 +496,49 @@ def _autostart_companion_ui() -> None:
                       file=sys.stderr)
                 _open_browser_when_ready(f"http://{host}:{ui_port}", host, ui_port)
             else:
-                print("[mcp] frontend autostart skipped: run `npm install` in the "
-                      "project root first.", file=sys.stderr)
+                print("[mcp] no built UI and no dev frontend found "
+                      "(build with scripts/build_mcpb.* or run `npm install`).",
+                      file=sys.stderr)
     except Exception as exc:  # noqa: BLE001
         print(f"[mcp] frontend autostart skipped: {exc}", file=sys.stderr)
+
+
+def _selftest() -> int:
+    """Diagnostic run (CLAUDE_DESIGNER_SELFTEST=1): start the UI, probe, exit.
+
+    Lets you reproduce the extension's startup outside Claude Desktop and see the
+    real errors. Used by scripts/diagnose.ps1.
+    """
+    import time as _t
+    print("[selftest] python    :", sys.version.replace("\n", " "), file=sys.stderr)
+    print("[selftest] executable:", sys.executable, file=sys.stderr)
+    print("[selftest] repo_root :", REPO_ROOT, file=sys.stderr)
+    print("[selftest] bundled lib:", _BUNDLED_LIB if _BUNDLED_LIB.is_dir() else "(none)",
+          file=sys.stderr)
+    try:
+        print("[selftest] renderer  :", available_renderer(), file=sys.stderr)
+    except Exception as exc:  # noqa: BLE001
+        print("[selftest] renderer check failed:", exc, file=sys.stderr)
+    print("[selftest] built UI  :", _has_built_ui(), file=sys.stderr)
+
+    _autostart_companion_ui()
+
+    host = os.environ.get("CLAUDE_DESIGNER_HOST", "127.0.0.1")
+    sp = int(os.environ.get("CLAUDE_DESIGNER_PORT", "8787"))
+    up = int(os.environ.get("CLAUDE_DESIGNER_UI_PORT", "5273"))
+    for _ in range(20):  # up to ~10s for the server to bind
+        if _port_open(host, sp):
+            break
+        _t.sleep(0.5)
+    print(f"[selftest] server {host}:{sp} ->",
+          "UP" if _port_open(host, sp) else "DOWN", file=sys.stderr)
+    if not _has_built_ui():
+        print(f"[selftest] vite   {host}:{up} ->",
+              "UP" if _port_open(host, up) else "DOWN", file=sys.stderr)
+    print("[selftest] see workspace/logs/ for companion-server.log / frontend.log",
+          file=sys.stderr)
+    print("[selftest] done", file=sys.stderr)
+    return 0
 
 
 def _open_browser_when_ready(url: str, host: str, port: int) -> None:

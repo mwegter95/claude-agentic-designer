@@ -7,6 +7,7 @@ venv/
 
 # Extension build artifacts
 lib/
+webui/
 .deps-installed
 
 # Runtime data

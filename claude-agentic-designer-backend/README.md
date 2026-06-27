@@ -176,18 +176,23 @@ route that works without a public tunnel or an admin connector exception.
 
 ### Build the bundle
 
-**Build on the same OS you'll install on.** The Windows build vendors native
-dependencies into `./lib` so the installed extension starts **instantly** (no
-first-run `pip install`, which would otherwise blow Claude's attach timeout):
+**Build on the same OS you'll install on.** Both build scripts first run
+`npm run build` and bundle the compiled UI into the archive as `webui/`, so the
+companion server can serve the interface **same-origin from `127.0.0.1:8787`** —
+no Node, Vite, or `npm install` is needed at runtime. The Windows build also
+vendors native dependencies into `./lib` so the installed extension starts
+**instantly** (no first-run `pip install`, which would otherwise blow Claude's
+attach timeout):
 
 ```powershell
-.\scripts\build_mcpb.ps1       # Windows  (recommended — vendors deps, instant start)
+.\scripts\build_mcpb.ps1       # Windows  (recommended — builds UI + vendors deps, instant start)
 ```
 ```bash
 ./scripts/build_mcpb.sh        # macOS / Linux (source-only; bootstraps a venv on first run)
 ```
 
-This produces `claude-agentic-designer.mcpb` in the repo root.
+This produces `claude-agentic-designer.mcpb` in the repo root. Both scripts
+require Node (for `npm run build`) on the build machine.
 
 > The bundle launches via the Windows Python launcher (`py -3`), since `python`
 > is often not on PATH on Windows. To test the macOS bundle, change the manifest
@@ -197,9 +202,10 @@ This produces `claude-agentic-designer.mcpb` in the repo root.
 
 1. Open **Claude Desktop → Settings → Extensions**.
 2. Drag in (or double-click) `claude-agentic-designer.mcpb` and confirm install.
-3. The extension **auto-starts the companion UI** — the FastAPI event server
-   (`127.0.0.1:8787`) and the React frontend (`127.0.0.1:5273`), opening the
-   browser automatically.
+3. The extension **auto-starts the companion UI** — the FastAPI event server,
+   which serves both the API and the bundled web interface at
+   **`http://127.0.0.1:8787`**, opening the browser automatically. (No separate
+   Vite/Node process at runtime; the prebuilt UI is served statically.)
 4. In Claude Desktop chat, ask it to design a deck. It calls the tools, the UI
    lights up each agent, and the finished `.pptx` opens in PowerPoint.
 
@@ -207,28 +213,42 @@ This produces `claude-agentic-designer.mcpb` in the repo root.
 
 Claude couldn't launch (or finish the handshake with) the server. Check, in order:
 
+- **Run the diagnostic first.** From the installed extension folder (or this repo's
+  backend), run:
+  ```powershell
+  .\scripts\diagnose.ps1
+  ```
+  It prints the Python version, imports every required dependency (with the bundled
+  `./lib` on the path), then reproduces the **exact** startup Claude performs —
+  including the companion server and the port probes — by running
+  `launcher.py` with `CLAUDE_DESIGNER_SELFTEST=1`. Any real traceback shows up here
+  instead of being hidden behind Claude's generic "Could not attach" message. Pass
+  `-ExtDir "C:\path\to\installed\extension"` to point it at the installed copy.
 - **Wrong interpreter.** The manifest runs `py -3`. Confirm `py -3 --version` works
   in a terminal on that PC. If only `python`/`python3` exists, edit the manifest
   `command` to match and rebuild.
 - **First-run timeout.** A source-only bundle installs deps on first launch, which
   can exceed the attach timeout. Build with `build_mcpb.ps1` on Windows so deps are
   vendored and startup is instant.
-- **Read the log.** The launcher tees to `workspace/logs/launcher.log` inside the
-  installed extension folder, and Claude Desktop keeps its own MCP logs
-  (`%APPDATA%\Claude\logs\`). These show the real Python error.
+- **Read the logs.** The launcher tees to `workspace/logs/launcher.log` (full Python
+  traceback on crash), the companion server logs to `workspace/logs/companion-server.log`,
+  and Claude Desktop keeps its own MCP logs (`%APPDATA%\Claude\logs\`).
 
 ### Auto-start controls (env, set in `manifest.json` or `.env`)
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `CLAUDE_DESIGNER_AUTOSTART_UI` | `1` | Master switch for the companion server + frontend |
-| `CLAUDE_DESIGNER_AUTOSTART_FRONTEND` | `1` | Start the Vite UI (`npm run dev`) too |
+| `CLAUDE_DESIGNER_AUTOSTART_UI` | `1` | Master switch for the companion server (which serves the UI) |
+| `CLAUDE_DESIGNER_AUTOSTART_FRONTEND` | `1` | Dev-only fallback: start the Vite UI (`npm run dev`) when no bundled `webui/` is present |
 | `CLAUDE_DESIGNER_OPEN_BROWSER` | `1` | Open the UI in the browser once it's up |
-| `CLAUDE_DESIGNER_UI_PORT` | `5273` | Frontend port to probe/open |
+| `CLAUDE_DESIGNER_UI_PORT` | `5273` | Dev-fallback Vite port to probe/open |
+| `CLAUDE_DESIGNER_SELFTEST` | _(unset)_ | When `1`, `launcher.py` runs diagnostics, probes ports, and exits (used by `diagnose.ps1`) |
 
-Auto-start is best-effort and never blocks the MCP server: if a port is already
-listening it's left alone, and if the frontend has no `node_modules` it's skipped
-with a note (run `npm install` in the repo root once).
+Auto-start is best-effort and never blocks the MCP server. When the bundle
+includes the prebuilt `webui/` (the normal case), the companion server serves the
+UI at `http://127.0.0.1:8787` and the browser opens there — no Node needed. The
+`npm run dev` path on `5273` is only a developer fallback used when running from
+source without a built UI.
 
 > **Skill (optional, hybrid pattern):** upload `SKILL.md` under Claude → Customize →
 > Skills so Claude follows the brand/workflow rules while calling these tools.

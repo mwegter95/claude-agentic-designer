@@ -11,8 +11,10 @@ import os
 import sys
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from sse_starlette.sse import EventSourceResponse
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -84,6 +86,42 @@ def main() -> None:
     host = os.environ.get("CLAUDE_DESIGNER_HOST", "127.0.0.1")
     port = int(os.environ.get("CLAUDE_DESIGNER_PORT", "8787"))
     uvicorn.run("server.app:app", host=host, port=port, reload=False)
+
+
+# --------------------------------------------------------------------------- #
+# Static companion UI (served same-origin so /api works with no CORS/proxy).
+# Packaged extension: ./webui (prebuilt). Local dev fallback: ../dist.
+# Registered LAST so it never shadows the /api routes above.
+# --------------------------------------------------------------------------- #
+def _webui_dir() -> Path | None:
+    backend = Path(__file__).resolve().parents[1]
+    for candidate in (backend / "webui", backend.parent / "dist"):
+        if (candidate / "index.html").is_file():
+            return candidate
+    return None
+
+
+_WEBUI = _webui_dir()
+if _WEBUI is not None:
+    _assets = _WEBUI / "assets"
+    if _assets.is_dir():
+        app.mount("/assets", StaticFiles(directory=str(_assets)), name="assets")
+
+    @app.get("/", include_in_schema=False)
+    def _ui_index() -> FileResponse:
+        return FileResponse(str(_WEBUI / "index.html"))
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    def _ui_spa(full_path: str) -> FileResponse:
+        # Never let the SPA shadow API routes: unknown /api/* must 404, not
+        # return index.html (which would break client error handling).
+        if full_path == "api" or full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="Not Found")
+        # Serve real static files; otherwise fall back to the SPA entry point.
+        target = (_WEBUI / full_path).resolve()
+        if _WEBUI in target.parents and target.is_file():
+            return FileResponse(str(target))
+        return FileResponse(str(_WEBUI / "index.html"))
 
 
 if __name__ == "__main__":

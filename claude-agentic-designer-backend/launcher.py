@@ -79,14 +79,23 @@ def main() -> int:
         sys.path.insert(0, str(LIB))
     sys.path.insert(0, str(HERE))
     _log(f"starting; interpreter={sys.executable}")
+    selftest = os.environ.get("CLAUDE_DESIGNER_SELFTEST", "").strip().lower() \
+        in ("1", "true", "yes", "on")
 
     # Fast path: deps already available -> run the server in this process so the
     # MCP stdio pipes Claude opened are preserved (no re-exec, Windows-safe).
     if _deps_importable():
         _log("dependencies available; starting MCP server in-process")
-        import mcp_server  # noqa: E402  (deps are on sys.path now)
-        mcp_server._run()
-        return 0
+        try:
+            import mcp_server  # noqa: E402  (deps are on sys.path now)
+            if selftest:
+                return mcp_server._selftest()
+            mcp_server._run()
+            return 0
+        except Exception:  # noqa: BLE001
+            import traceback
+            _log("MCP server crashed:\n" + traceback.format_exc())
+            return 1
 
     # Fallback: bootstrap a venv and run the server as a child that inherits our
     # stdio. Used for source-only bundles (e.g. built on macOS).

@@ -14,12 +14,22 @@ if (-not (Test-Path (Join-Path $Backend "manifest.json"))) {
 $Stage = Join-Path ([System.IO.Path]::GetTempPath()) ("cad-mcpb-" + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $Stage | Out-Null
 
-$exclude = @(".venv", "lib", "__pycache__", "node_modules")
+$exclude = @(".venv", "lib", "__pycache__", "node_modules", "webui")
 Get-ChildItem -Path $Backend -Force | Where-Object {
   $_.Name -notin $exclude -and $_.Name -ne ".env" -and $_.Name -ne ".deps-installed"
 } | ForEach-Object {
   Copy-Item $_.FullName -Destination $Stage -Recurse -Force
 }
+
+# Build the companion UI and stage it as ./webui so the FastAPI server serves it
+# same-origin (no Node/Vite needed at runtime on the target machine).
+$Root = (Resolve-Path (Join-Path $Backend "..")).Path
+Write-Host "Building companion UI (npm run build)..."
+Push-Location $Root
+& npm run build
+if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Error "npm run build failed" }
+Pop-Location
+Copy-Item (Join-Path $Root "dist") (Join-Path $Stage "webui") -Recurse -Force
 
 # Vendor dependencies into ./lib (native Windows wheels) so the installed
 # extension starts instantly with no first-run pip install (which would blow the
