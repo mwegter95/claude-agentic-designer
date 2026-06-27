@@ -17,10 +17,15 @@ Architecture (all on the same machine):
 Run it standalone for inspection:
     python mcp_server.py            # stdio transport (what Claude Desktop uses)
     mcp dev mcp_server.py           # MCP Inspector (if the `mcp` CLI is installed)
+
+Remote route (Claude-for-PowerPoint add-in / web Custom Connector):
+    Set CLAUDE_DESIGNER_MCP_TRANSPORT=sse (or streamable-http) and run this file to
+    serve over HTTP, then expose it with a tunnel (see scripts/run_remote_mcp.*).
 """
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 from datetime import datetime, timezone
@@ -369,5 +374,86 @@ def design_artifact(doc_type: str = "slides", brief: str = "") -> str:
     )
 
 
+# --------------------------------------------------------------------------- #
+# Transport runner
+# --------------------------------------------------------------------------- #
+# stdio  -> Claude Desktop launches this process directly (local route).
+# sse / streamable-http -> serve over HTTP so a tunnel (localtunnel/ngrok) can
+#   expose it to Anthropic's cloud for the Claude-for-PowerPoint add-in (remote
+#   route). In HTTP mode we add a tiny ASGI gateway that:
+#     - optionally enforces a static Bearer token (CLAUDE_DESIGNER_MCP_TOKEN), and
+#     - sets `bypass-tunnel-reminder: true` so localtunnel skips its interstitial
+#       page (Anthropic's servers can't click through it).
+def _gateway(app, token: str):
+    """Pure-ASGI wrapper (does not buffer SSE streams)."""
+
+    async def wrapped(scope, receive, send):
+        if scope["type"] != "http":
+            await app(scope, receive, send)
+            return
+        if token:
+            headers = dict(scope.get("headers") or [])
+            if headers.get(b"authorization", b"").decode() != f"Bearer {token}":
+                await send({
+                    "type": "http.response.start",
+                    "status": 401,
+                    "headers": [(b"content-type", b"text/plain"),
+                                (b"bypass-tunnel-reminder", b"true")],
+                })
+                await send({"type": "http.response.body", "body": b"Unauthorized"})
+                return
+
+        async def send_with_header(message):
+            if message["type"] == "http.response.start":
+                hdrs = list(message.get("headers") or [])
+                hdrs.append((b"bypass-tunnel-reminder", b"true"))
+                message = {**message, "headers": hdrs}
+            await send(message)
+
+        await app(scope, receive, send_with_header)
+
+    return wrapped
+
+
+def _run() -> None:
+    transport = os.environ.get("CLAUDE_DESIGNER_MCP_TRANSPORT", "stdio").strip().lower()
+    if transport == "stdio":
+        mcp.run()
+        return
+
+    if transport not in ("sse", "streamable-http"):
+        raise SystemExit(
+            f"Unknown CLAUDE_DESIGNER_MCP_TRANSPORT '{transport}'. "
+            "Use 'stdio', 'sse', or 'streamable-http'."
+        )
+
+    import uvicorn
+
+    host = os.environ.get("CLAUDE_DESIGNER_MCP_HOST", "127.0.0.1").strip() or "127.0.0.1"
+    port = int(os.environ.get("CLAUDE_DESIGNER_MCP_PORT", "3333"))
+    token = os.environ.get("CLAUDE_DESIGNER_MCP_TOKEN", "").strip()
+
+    mcp.settings.host = host
+    mcp.settings.port = port
+
+    if transport == "streamable-http":
+        base_app = mcp.streamable_http_app()
+        route = mcp.settings.streamable_http_path
+    else:
+        base_app = mcp.sse_app()
+        route = mcp.settings.sse_path
+
+    app = _gateway(base_app, token)
+
+    print(f"[mcp] Serving {transport} on http://{host}:{port}{route}", file=sys.stderr)
+    if token:
+        print("[mcp] Bearer auth ENABLED (Authorization: Bearer <token> required).",
+              file=sys.stderr)
+    else:
+        print("[mcp] WARNING: no CLAUDE_DESIGNER_MCP_TOKEN set — endpoint is unauthenticated.",
+              file=sys.stderr)
+    uvicorn.run(app, host=host, port=port, log_level="info")
+
+
 if __name__ == "__main__":
-    mcp.run()
+    _run()

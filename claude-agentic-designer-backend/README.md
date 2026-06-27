@@ -60,14 +60,22 @@ workspace/                   # runtime data (references, runs) — gitignored
 ./scripts/run_server.sh      # http://127.0.0.1:8787  (SSE at /api/events/stream)
 ```
 
-**Windows (PowerShell)**
+**Windows**
 
-```powershell
-.\scripts\install.ps1        # venv + deps; warns if LibreOffice is missing
-.\scripts\run_server.ps1     # http://127.0.0.1:8787  (SSE at /api/events/stream)
+Double-click these (or run them from a terminal). They are `.bat` wrappers that
+bypass the PowerShell execution policy and keep the window open so you can read the
+output:
+
+```text
+scripts\install.bat        :: venv + deps (uses the 'py' launcher)
+scripts\run_server.bat     :: http://127.0.0.1:8787  (SSE at /api/events/stream)
 ```
 
-> If PowerShell blocks the scripts, allow them for the current user once with:
+> **Don't double-click the `.ps1` files directly** — Windows blocks unsigned
+> scripts by default, so the window just flashes and closes. Use the `.bat`
+> wrappers above (or `start-all.bat` in the repo root to launch backend + frontend
+> together). If you prefer running the `.ps1` from an open PowerShell window, allow
+> them for the current user once with:
 > `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`
 
 Smoke-test the whole pipeline (and light up the UI) with **no Claude needed**:
@@ -153,6 +161,88 @@ To inspect the MCP server standalone (without Claude Desktop):
 ```powershell
 ./scripts/run_mcp.ps1
 ```
+
+## Using it from the Claude for PowerPoint add-in (remote route)
+
+The PowerPoint add-in (and the Claude web app) talk to **Anthropic's cloud**, which
+then calls your server over the **public internet** — it cannot reach `localhost` or
+a stdio process. So for this route the MCP server runs over **HTTP (SSE)** behind a
+tunnel with a constant address.
+
+```
+PowerPoint add-in ─▶ Anthropic cloud ─▶ https://<subdomain>.loca.lt/sse ─▶ your PC
+                                              (localtunnel)        mcp_server.py (SSE)
+```
+
+### Skill vs. Connector — which is which
+
+Anthropic uses these two words for two different things, and this project uses **both**:
+
+- **Skill** = the instruction package (`SKILL.md`: the workflow, brand rules, the
+  agent roles). It tells Claude *how to think and orchestrate*. You upload it under
+  **Claude → Customize → Skills → Add skill**.
+- **Connector** = the live server that *executes code* on your PC (builds the real
+  `.pptx`, extracts tokens, renders previews, emits events to the UI). You add it
+  under **Claude → Settings → Connectors → Add custom connector** as a **Remote MCP**
+  URL. Claude reads the server's schema and turns its tools into callable skills,
+  including inside the PowerPoint sidebar.
+
+> Use the **hybrid pattern**: upload `SKILL.md` as a Skill *and* add the tunnel URL
+> as a Connector. Claude follows the skill's rules while calling your local tools.
+
+### Setup
+
+1. **Configure `.env`** (copied from `.env.example`):
+   ```
+   CLAUDE_DESIGNER_MCP_TRANSPORT=sse
+   CLAUDE_DESIGNER_MCP_PORT=3333
+   CLAUDE_DESIGNER_MCP_TOKEN=<pick-a-long-random-secret>
+   LT_SUBDOMAIN=claude-agentic-designer      # your constant address
+   ```
+   The token is **strongly recommended** — without it, anyone who finds your tunnel
+   URL can run these tools on your machine.
+
+2. **Start the tunnel + server** (Node.js is required; `npx` pulls localtunnel):
+   ```bash
+   # macOS / Linux
+   ./scripts/run_remote_mcp.sh
+   ```
+   ```text
+   :: Windows — double-click:
+   scripts\run_remote_mcp.bat
+   ```
+   To start *everything* (companion server + frontend + tunnel) at once on Windows,
+   double-click **`start-all.bat`** in the repo root — it now opens the frontend,
+   backend, and the tunnel together. The Remote MCP window prints your public URL,
+   e.g. `https://claude-agentic-designer.loca.lt/sse`.
+
+3. **Add the Custom Connector in Claude** → Settings → Connectors → Add custom
+   connector → Remote MCP / SSE:
+   - **URL:** `https://<LT_SUBDOMAIN>.loca.lt/sse`
+   - **Header:** `Authorization: Bearer <CLAUDE_DESIGNER_MCP_TOKEN>`
+   The server auto-sends `bypass-tunnel-reminder: true` so Anthropic's cloud skips
+   localtunnel's interstitial page (no manual IP/password step needed).
+
+4. **Upload the Skill** → Claude → Customize → Skills → Add skill → upload `SKILL.md`.
+
+5. **Use it in PowerPoint:** open the Claude add-in sidebar and trigger the skill
+   (e.g. type your skill's slash command or just describe the deck). Keep the
+   companion **frontend** open to watch the agents light up.
+
+### Notes & caveats
+
+- **Constant address:** localtunnel's `--subdomain` is *best-effort and free* — if the
+  name is taken you'll get a random URL and must update the connector. For a
+  guaranteed reserved domain, ngrok with a reserved domain is more reliable (point it
+  at the same port; keep the bearer token and the connector header).
+- **Security:** this connector lets a remote service run code on your PC (write files,
+  drive PowerPoint). Always set `CLAUDE_DESIGNER_MCP_TOKEN`, keep the tunnel down when
+  not in use, and never share the URL + token.
+- **Plan:** Custom Connectors / the PowerPoint add-in require a paid Claude plan with
+  the Connectors capability enabled.
+- If a connector won't let you add a custom `Authorization` header, you can leave
+  `CLAUDE_DESIGNER_MCP_TOKEN` blank (relying on the obscure tunnel URL only) — but that
+  is far less safe; prefer ngrok/OAuth in that case.
 
 ## Microsoft 365 / SharePoint
 
