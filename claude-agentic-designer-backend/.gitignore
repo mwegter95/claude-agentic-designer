@@ -5,6 +5,10 @@ __pycache__/
 venv/
 .env
 
+# Extension build artifacts
+lib/
+.deps-installed
+
 # Runtime data
 workspace/
 *.log

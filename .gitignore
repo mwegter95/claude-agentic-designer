@@ -4,3 +4,6 @@ dist-ssr
 *.local
 .DS_Store
 .env
+
+# Claude Desktop extension bundle (build artifact)
+*.mcpb

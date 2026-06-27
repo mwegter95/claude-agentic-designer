@@ -35,6 +35,12 @@ from typing import Any, Optional
 REPO_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO_ROOT))
 
+# When packaged as a Claude Desktop extension (.mcpb), third-party deps are
+# vendored into ./lib next to this file. Add it to the path if present.
+_BUNDLED_LIB = REPO_ROOT / "lib"
+if _BUNDLED_LIB.is_dir():
+    sys.path.insert(0, str(_BUNDLED_LIB))
+
 from mcp.server.fastmcp import FastMCP  # noqa: E402
 
 from tools.build_pptx import build  # noqa: E402
@@ -377,6 +383,108 @@ def design_artifact(doc_type: str = "slides", brief: str = "") -> str:
 # --------------------------------------------------------------------------- #
 # Transport runner
 # --------------------------------------------------------------------------- #
+def _truthy(val: str) -> bool:
+    return val.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _port_open(host: str, port: int) -> bool:
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(0.4)
+        return sock.connect_ex((host, port)) == 0
+
+
+def _venv_python() -> str:
+    candidate = (
+        REPO_ROOT / ".venv" / ("Scripts" if os.name == "nt" else "bin")
+        / ("python.exe" if os.name == "nt" else "python")
+    )
+    return str(candidate) if candidate.exists() else sys.executable
+
+
+def _spawn_detached(args, cwd: Path, log_path: Path, shell: bool = False):
+    import subprocess
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log = open(log_path, "ab", buffering=0)  # noqa: SIM115 (kept open for child)
+    kwargs: dict[str, Any] = dict(cwd=str(cwd), stdin=subprocess.DEVNULL,
+                                  stdout=log, stderr=log, shell=shell)
+    if os.name == "nt":
+        # DETACHED_PROCESS: no console window, survives independently.
+        kwargs["creationflags"] = 0x00000008
+    else:
+        kwargs["start_new_session"] = True
+    return subprocess.Popen(args, **kwargs)
+
+
+def _autostart_companion_ui() -> None:
+    """Best-effort: start the companion event server (FastAPI) and the React UI.
+
+    Triggered when Claude Desktop launches this MCP server (or the remote runner)
+    so the user does not have to start the UI by hand. Controlled by
+    CLAUDE_DESIGNER_AUTOSTART_UI (default on). Never writes to stdout (the stdio
+    MCP stream lives there) and never raises — UI is a convenience, not a
+    dependency.
+    """
+    if not _truthy(os.environ.get("CLAUDE_DESIGNER_AUTOSTART_UI", "1")):
+        return
+
+    host = os.environ.get("CLAUDE_DESIGNER_HOST", "127.0.0.1").strip() or "127.0.0.1"
+    server_port = int(os.environ.get("CLAUDE_DESIGNER_PORT", "8787"))
+    ui_port = int(os.environ.get("CLAUDE_DESIGNER_UI_PORT", "5273"))
+    logs_dir = REPO_ROOT / "workspace" / "logs"
+    frontend_dir = REPO_ROOT.parent  # the Vite project lives one level up
+
+    try:
+        if not _port_open(host, server_port):
+            _spawn_detached(
+                [_venv_python(), "-m", "uvicorn", "server.app:app",
+                 "--host", host, "--port", str(server_port)],
+                cwd=REPO_ROOT,
+                log_path=logs_dir / "companion-server.log",
+            )
+            print(f"[mcp] launched companion server on http://{host}:{server_port}",
+                  file=sys.stderr)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[mcp] companion server autostart skipped: {exc}", file=sys.stderr)
+
+    try:
+        if _truthy(os.environ.get("CLAUDE_DESIGNER_AUTOSTART_FRONTEND", "1")) \
+                and not _port_open(host, ui_port):
+            if (frontend_dir / "package.json").exists() \
+                    and (frontend_dir / "node_modules").exists():
+                if os.name == "nt":
+                    _spawn_detached("npm run dev", cwd=frontend_dir,
+                                    log_path=logs_dir / "frontend.log", shell=True)
+                else:
+                    _spawn_detached(["npm", "run", "dev"], cwd=frontend_dir,
+                                    log_path=logs_dir / "frontend.log")
+                print(f"[mcp] launched frontend (Vite) on http://{host}:{ui_port}",
+                      file=sys.stderr)
+                _open_browser_when_ready(f"http://{host}:{ui_port}", host, ui_port)
+            else:
+                print("[mcp] frontend autostart skipped: run `npm install` in the "
+                      "project root first.", file=sys.stderr)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[mcp] frontend autostart skipped: {exc}", file=sys.stderr)
+
+
+def _open_browser_when_ready(url: str, host: str, port: int) -> None:
+    if not _truthy(os.environ.get("CLAUDE_DESIGNER_OPEN_BROWSER", "1")):
+        return
+    import threading
+
+    def _wait_and_open() -> None:
+        import time as _t
+        import webbrowser
+        for _ in range(60):  # up to ~30s for the dev server to bind
+            if _port_open(host, port):
+                webbrowser.open(url)
+                return
+            _t.sleep(0.5)
+
+    threading.Thread(target=_wait_and_open, daemon=True).start()
+
+
 # stdio  -> Claude Desktop launches this process directly (local route).
 # sse / streamable-http -> serve over HTTP so a tunnel (localtunnel/ngrok) can
 #   expose it to Anthropic's cloud for the Claude-for-PowerPoint add-in (remote
@@ -416,6 +524,7 @@ def _gateway(app, token: str):
 
 
 def _run() -> None:
+    _autostart_companion_ui()
     transport = os.environ.get("CLAUDE_DESIGNER_MCP_TRANSPORT", "stdio").strip().lower()
     if transport == "stdio":
         mcp.run()

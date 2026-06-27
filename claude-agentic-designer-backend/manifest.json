@@ -1,0 +1,46 @@
+{
+  "dxt_version": "0.1",
+  "name": "claude-agentic-designer",
+  "display_name": "Claude Agentic Designer",
+  "version": "0.1.0",
+  "description": "Multi-agent, on-brand presentation designer. Extracts brand tokens from a master deck, builds real .pptx slides via python-pptx, renders previews, and scores them against a rubric — auto-starting a companion UI that lights up each agent.",
+  "long_description": "Runs the Claude Agentic Designer workflow locally over stdio. Claude orchestrates the design_system -> content -> structure -> layout -> builder -> reflection -> evaluator agents by calling these tools. Every call emits an event, so the bundled companion UI (FastAPI event server + React app) visualizes the run in real time. The extension auto-starts that UI the first time it is used. Windows note: slide rendering uses PowerPoint via COM when available.",
+  "author": {
+    "name": "mwegter95"
+  },
+  "icon": "icon.png",
+  "server": {
+    "type": "python",
+    "entry_point": "launcher.py",
+    "mcp_config": {
+      "command": "python",
+      "args": ["${__dirname}/launcher.py"],
+      "env": {
+        "CLAUDE_DESIGNER_MCP_TRANSPORT": "stdio",
+        "CLAUDE_DESIGNER_AUTOSTART_UI": "1",
+        "CLAUDE_DESIGNER_AUTOSTART_FRONTEND": "1",
+        "CLAUDE_DESIGNER_OPEN_BROWSER": "1",
+        "PYTHONPATH": "${__dirname}",
+        "PYTHONUNBUFFERED": "1"
+      }
+    }
+  },
+  "tools": [
+    { "name": "start_run", "description": "Begin a new design run; returns run_id, enabled references, and the rubric." },
+    { "name": "list_reference_files", "description": "List the brand master + example files the user configured." },
+    { "name": "extract_design_tokens", "description": "Extract palette, fonts, type scale, and layouts from a master deck." },
+    { "name": "build_presentation", "description": "Build a real .pptx from a slide plan using python-pptx." },
+    { "name": "render_presentation", "description": "Render slide previews (PowerPoint COM on Windows, LibreOffice fallback)." },
+    { "name": "evaluate_presentation", "description": "Score the deck against the rubric and return pass/fail with feedback." },
+    { "name": "log_event", "description": "Emit a progress event so the companion UI lights up the active agent." },
+    { "name": "finish_run", "description": "Finalize the run and return the output artifact paths." },
+    { "name": "get_workflow_guide", "description": "Return the orchestration guide for a given document type." }
+  ],
+  "keywords": ["powerpoint", "pptx", "presentation", "design", "branding", "mcp"],
+  "compatibility": {
+    "platforms": ["win32", "darwin"],
+    "runtimes": {
+      "python": ">=3.10"
+    }
+  }
+}

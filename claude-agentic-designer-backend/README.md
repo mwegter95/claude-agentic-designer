@@ -162,6 +162,59 @@ To inspect the MCP server standalone (without Claude Desktop):
 ./scripts/run_mcp.ps1
 ```
 
+## Installing it as a Claude Desktop extension (.mcpb)
+
+On a **managed/corporate** Claude account, the web "Add custom connector" option
+(needed for the PowerPoint add-in's remote route) is often disabled by the admin.
+**Desktop extensions are a separate, usually-allowed surface** — so this is the
+route that works without a public tunnel or an admin connector exception.
+
+> ⚠️ This installs in **Claude Desktop**, not the in-PowerPoint sidebar. You drive
+> the workflow from Desktop chat; the tools still build the real `.pptx` and open it
+> in PowerPoint (via COM on Windows). The sidebar UI specifically needs the blocked
+> remote connector — the deck-building capability does not.
+
+### Build the bundle
+
+The bundle is **source-only** — `launcher.py` creates a venv and installs
+requirements on first launch (so `pywin32`/`Pillow` build natively on the target
+PC). You can build it on either OS:
+
+```bash
+./scripts/build_mcpb.sh        # macOS / Linux
+```
+```powershell
+.\scripts\build_mcpb.ps1       # Windows
+```
+
+This produces `claude-agentic-designer.mcpb` in the repo root.
+
+### Install & use
+
+1. Open **Claude Desktop → Settings → Extensions**.
+2. Drag in (or double-click) `claude-agentic-designer.mcpb` and confirm install.
+3. First run bootstraps the venv (takes a minute) and **auto-starts the companion
+   UI** — the FastAPI event server (`127.0.0.1:8787`) and the React frontend
+   (`127.0.0.1:5273`), opening the browser automatically.
+4. In Claude Desktop chat, ask it to design a deck. It calls the tools, the UI
+   lights up each agent, and the finished `.pptx` opens in PowerPoint.
+
+### Auto-start controls (env, set in `manifest.json` or `.env`)
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `CLAUDE_DESIGNER_AUTOSTART_UI` | `1` | Master switch for the companion server + frontend |
+| `CLAUDE_DESIGNER_AUTOSTART_FRONTEND` | `1` | Start the Vite UI (`npm run dev`) too |
+| `CLAUDE_DESIGNER_OPEN_BROWSER` | `1` | Open the UI in the browser once it's up |
+| `CLAUDE_DESIGNER_UI_PORT` | `5273` | Frontend port to probe/open |
+
+Auto-start is best-effort and never blocks the MCP server: if a port is already
+listening it's left alone, and if the frontend has no `node_modules` it's skipped
+with a note (run `npm install` in the repo root once).
+
+> **Skill (optional, hybrid pattern):** upload `SKILL.md` under Claude → Customize →
+> Skills so Claude follows the brand/workflow rules while calling these tools.
+
 ## Using it from the Claude for PowerPoint add-in (remote route)
 
 The PowerPoint add-in (and the Claude web app) talk to **Anthropic's cloud**, which
