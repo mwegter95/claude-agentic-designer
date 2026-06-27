@@ -21,6 +21,16 @@ Get-ChildItem -Path $Backend -Force | Where-Object {
   Copy-Item $_.FullName -Destination $Stage -Recurse -Force
 }
 
+# Vendor dependencies into ./lib (native Windows wheels) so the installed
+# extension starts instantly with no first-run pip install (which would blow the
+# MCP attach timeout). mcp_server.py / launcher.py add ./lib to sys.path.
+Write-Host "Vendoring dependencies into lib (this may take a minute)..."
+$libDir = Join-Path $Stage "lib"
+New-Item -ItemType Directory -Path $libDir | Out-Null
+& py -3 -m pip install --quiet --disable-pip-version-check `
+  --target $libDir -r (Join-Path $Backend "requirements.txt")
+if ($LASTEXITCODE -ne 0) { Write-Error "pip install --target failed" }
+
 # Drop any __pycache__/*.pyc and workspace run artifacts that slipped through.
 Get-ChildItem -Path $Stage -Recurse -Force -Include "__pycache__", "*.pyc" |
   Remove-Item -Recurse -Force -ErrorAction SilentlyContinue

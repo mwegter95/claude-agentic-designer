@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """launcher.py — entry point used by the Claude Desktop extension (.mcpb).
 
-Claude Desktop runs `python launcher.py`. Because a packaged extension ships
-source-only (no platform binaries — pywin32/Pillow/lxml must be built on the
-target machine), this launcher:
+Claude Desktop spawns this over stdio (see manifest.json: `py -3 launcher.py`)
+and expects the MCP handshake to start quickly. To stay fast and Windows-safe:
 
-  1. ensures a local virtual environment exists next to the extension,
-  2. installs requirements.txt into it on first run (so pywin32 runs its own
-     Windows post-install correctly), and
-  3. re-executes mcp_server.py with that venv's interpreter.
+  * If dependencies are importable (the Windows bundle vendors them into ./lib at
+    build time), we run the server **in-process** — no venv, no re-exec, so the
+    stdio pipes Claude opened are preserved.
+  * Only if deps are missing (e.g. a source-only bundle built on macOS) do we
+    bootstrap a local venv and hand off to it as a child that inherits stdio.
 
-It deliberately imports only the standard library so it can run under whatever
-Python Claude Desktop launches. All real work happens in mcp_server.py.
+It imports only the standard library so it runs under whatever Python Claude
+Desktop launches. All real work lives in mcp_server.py.
 """
 from __future__ import annotations
 
@@ -21,21 +21,38 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+LIB = HERE / "lib"                       # vendored deps in a packaged bundle
 VENV_DIR = HERE / ".venv"
 REQUIREMENTS = HERE / "requirements.txt"
 SERVER = HERE / "mcp_server.py"
-_BOOTSTRAP_FLAG = "CLAUDE_DESIGNER_BOOTSTRAPPED"
+LOG = HERE / "workspace" / "logs" / "launcher.log"
+
+
+def _log(msg: str) -> None:
+    # stderr only — stdout is the MCP stdio channel. Also tee to a file so the
+    # attach can be diagnosed even when the host swallows stderr.
+    line = f"[launcher] {msg}"
+    print(line, file=sys.stderr, flush=True)
+    try:
+        LOG.parent.mkdir(parents=True, exist_ok=True)
+        with open(LOG, "a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
+    except Exception:
+        pass
+
+
+def _deps_importable() -> bool:
+    try:
+        import mcp  # noqa: F401
+        return True
+    except Exception:
+        return False
 
 
 def _venv_python() -> Path:
     if os.name == "nt":
         return VENV_DIR / "Scripts" / "python.exe"
     return VENV_DIR / "bin" / "python"
-
-
-def _log(msg: str) -> None:
-    # stderr only — stdout is the MCP stdio channel.
-    print(f"[launcher] {msg}", file=sys.stderr, flush=True)
 
 
 def _ensure_venv() -> Path:
@@ -45,7 +62,7 @@ def _ensure_venv() -> Path:
         subprocess.run([sys.executable, "-m", "venv", str(VENV_DIR)], check=True)
     # Install requirements only when our marker file is missing/stale.
     marker = VENV_DIR / ".deps-installed"
-    req_mtime = REQUIREMENTS.stat().st_mtime if REQUIREMENTS.exists() else 0
+    req_mtime = REQUIREMENTS.stat().st_mtime if REQUIREMENTS.exists() else 0.0
     if not marker.exists() or float(marker.read_text() or "0") < req_mtime:
         _log("installing requirements (first run may take a minute) ...")
         subprocess.run(
@@ -58,22 +75,31 @@ def _ensure_venv() -> Path:
 
 
 def main() -> int:
-    # Already running inside our venv? Just hand off to the server in-process.
-    if os.environ.get(_BOOTSTRAP_FLAG) == "1":
-        os.execv(sys.executable, [sys.executable, str(SERVER)])
-        return 0  # unreachable
+    if LIB.is_dir():
+        sys.path.insert(0, str(LIB))
+    sys.path.insert(0, str(HERE))
+    _log(f"starting; interpreter={sys.executable}")
 
+    # Fast path: deps already available -> run the server in this process so the
+    # MCP stdio pipes Claude opened are preserved (no re-exec, Windows-safe).
+    if _deps_importable():
+        _log("dependencies available; starting MCP server in-process")
+        import mcp_server  # noqa: E402  (deps are on sys.path now)
+        mcp_server._run()
+        return 0
+
+    # Fallback: bootstrap a venv and run the server as a child that inherits our
+    # stdio. Used for source-only bundles (e.g. built on macOS).
+    _log("dependencies missing; bootstrapping a local environment")
     try:
         py = _ensure_venv()
     except subprocess.CalledProcessError as exc:
         _log(f"environment bootstrap failed: {exc}")
         return exc.returncode or 1
 
-    env = dict(os.environ, **{_BOOTSTRAP_FLAG: "1"})
-    # Re-exec the server with the venv interpreter, inheriting stdio so the MCP
-    # protocol stream is preserved.
-    os.execve(str(py), [str(py), str(SERVER)], env)
-    return 0  # unreachable
+    env = dict(os.environ, CLAUDE_DESIGNER_BOOTSTRAPPED="1")
+    proc = subprocess.run([str(py), str(SERVER)], env=env)
+    return proc.returncode
 
 
 if __name__ == "__main__":

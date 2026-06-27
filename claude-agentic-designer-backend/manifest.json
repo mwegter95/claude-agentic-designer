@@ -13,8 +13,8 @@
     "type": "python",
     "entry_point": "launcher.py",
     "mcp_config": {
-      "command": "python",
-      "args": ["${__dirname}/launcher.py"],
+      "command": "py",
+      "args": ["-3", "${__dirname}/launcher.py"],
       "env": {
         "CLAUDE_DESIGNER_MCP_TRANSPORT": "stdio",
         "CLAUDE_DESIGNER_AUTOSTART_UI": "1",

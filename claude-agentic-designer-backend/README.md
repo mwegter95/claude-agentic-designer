@@ -176,28 +176,46 @@ route that works without a public tunnel or an admin connector exception.
 
 ### Build the bundle
 
-The bundle is **source-only** — `launcher.py` creates a venv and installs
-requirements on first launch (so `pywin32`/`Pillow` build natively on the target
-PC). You can build it on either OS:
+**Build on the same OS you'll install on.** The Windows build vendors native
+dependencies into `./lib` so the installed extension starts **instantly** (no
+first-run `pip install`, which would otherwise blow Claude's attach timeout):
 
-```bash
-./scripts/build_mcpb.sh        # macOS / Linux
-```
 ```powershell
-.\scripts\build_mcpb.ps1       # Windows
+.\scripts\build_mcpb.ps1       # Windows  (recommended — vendors deps, instant start)
+```
+```bash
+./scripts/build_mcpb.sh        # macOS / Linux (source-only; bootstraps a venv on first run)
 ```
 
 This produces `claude-agentic-designer.mcpb` in the repo root.
+
+> The bundle launches via the Windows Python launcher (`py -3`), since `python`
+> is often not on PATH on Windows. To test the macOS bundle, change the manifest
+> `command` to `python3` first.
 
 ### Install & use
 
 1. Open **Claude Desktop → Settings → Extensions**.
 2. Drag in (or double-click) `claude-agentic-designer.mcpb` and confirm install.
-3. First run bootstraps the venv (takes a minute) and **auto-starts the companion
-   UI** — the FastAPI event server (`127.0.0.1:8787`) and the React frontend
-   (`127.0.0.1:5273`), opening the browser automatically.
+3. The extension **auto-starts the companion UI** — the FastAPI event server
+   (`127.0.0.1:8787`) and the React frontend (`127.0.0.1:5273`), opening the
+   browser automatically.
 4. In Claude Desktop chat, ask it to design a deck. It calls the tools, the UI
    lights up each agent, and the finished `.pptx` opens in PowerPoint.
+
+### Troubleshooting "Could not attach to MCP server"
+
+Claude couldn't launch (or finish the handshake with) the server. Check, in order:
+
+- **Wrong interpreter.** The manifest runs `py -3`. Confirm `py -3 --version` works
+  in a terminal on that PC. If only `python`/`python3` exists, edit the manifest
+  `command` to match and rebuild.
+- **First-run timeout.** A source-only bundle installs deps on first launch, which
+  can exceed the attach timeout. Build with `build_mcpb.ps1` on Windows so deps are
+  vendored and startup is instant.
+- **Read the log.** The launcher tees to `workspace/logs/launcher.log` inside the
+  installed extension folder, and Claude Desktop keeps its own MCP logs
+  (`%APPDATA%\Claude\logs\`). These show the real Python error.
 
 ### Auto-start controls (env, set in `manifest.json` or `.env`)
 
